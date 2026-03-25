@@ -1,4 +1,6 @@
 
-// Web App URL from Google Apps Script Deployment
-export const GOOGLE_SCRIPT_URL: string ='https://script.google.com/macros/s/AKfycbw1EnoL0vu2D2m2v243RRAW6EbvXyaT49xJC3J1iisIqnpV1ytikEbZTPwzVG61xKsp/exec'
+// Supabase Configuration
+// These values should be set in your .env file
+export const SUPABASE_URL: string = import.meta.env.VITE_SUPABASE_URL || '';
+export const SUPABASE_ANON_KEY: string = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 

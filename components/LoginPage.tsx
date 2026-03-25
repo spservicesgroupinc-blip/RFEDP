@@ -1,8 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
-import { User, Lock, Building2, ArrowRight, Loader2, AlertCircle, HardHat, KeyRound, Download, Mail } from 'lucide-react';
+import { User, Lock, Building2, ArrowRight, Loader2, AlertCircle, Download, Mail } from 'lucide-react';
 import { UserSession } from '../types';
-import { loginUser, signupUser, loginCrew } from '../services/api';
 import { supabase, getProfileAndCompany } from '../services/supabase';
 
 interface LoginPageProps {
@@ -83,41 +82,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, installPrompt, on
             })
           }
         }
-        return
+        return;
       }
 
-      // Fallback to existing Google Apps Script logic if Supabase is not configured
-      if (!isSignup) {
-          // Try admin login first
-          try {
-              const session = await loginUser(formData.username, formData.password);
-              if (session) {
-                  onLoginSuccess(session);
-                  return;
-              }
-          } catch (adminErr) {
-              // If admin fails, try crew login
-              try {
-                  const crewSession = await loginCrew(formData.username, formData.password);
-                  if (crewSession) {
-                      onLoginSuccess(crewSession);
-                      return;
-                  }
-              } catch (crewErr) {
-                  // Both failed
-                  setError("Invalid email/username or password.");
-              }
-          }
-      } else {
-          if (!formData.companyName) {
-              setError("Company Name is required.");
-              setIsLoading(false);
-              return;
-          }
-          const session = await signupUser(formData.username, formData.password, formData.companyName);
-          if (session) onLoginSuccess(session);
-          else setError("Email taken or failed.");
-      }
+      // Supabase not configured - show error
+      setError('Supabase not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file.');
+      setIsLoading(false);
     } catch (err: any) {
       setError(err.message || "An unexpected error occurred.");
     } finally {

@@ -1,6 +1,10 @@
+/**
+ * Supabase API Service
+ * Replaces Google Apps Script backend with Supabase database operations
+ */
 
-import { GOOGLE_SCRIPT_URL } from '../constants';
-import { CalculatorState, EstimateRecord, UserSession } from '../types';
+import { supabase } from './supabase';
+import type { CalculatorState, EstimateRecord, UserSession, CustomerProfile, WarehouseItem } from '../types';
 
 interface ApiResponse {
   status: 'success' | 'error';
@@ -9,160 +13,509 @@ interface ApiResponse {
 }
 
 /**
- * Helper to check if API is configured
+ * Helper to check if Supabase is configured
  */
 const isApiConfigured = () => {
-  return GOOGLE_SCRIPT_URL && !GOOGLE_SCRIPT_URL.includes('PLACEHOLDER');
+  return supabase !== null;
 };
 
 /**
- * Helper for making robust fetch requests to GAS
- * Includes retry logic for cold starts
- */
-const apiRequest = async (payload: any, retries = 2): Promise<ApiResponse> => {
-    if (!isApiConfigured()) {
-        return { status: 'error', message: 'API Config Missing' };
-    }
-
-    try {
-        const response = await fetch(GOOGLE_SCRIPT_URL, {
-            method: 'POST',
-            mode: 'cors',
-            headers: {
-                // strict text/plain to avoid CORS preflight (OPTIONS) which GAS fails on
-                "Content-Type": "text/plain;charset=utf-8", 
-            },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) {
-            throw new Error(`HTTP Error: ${response.status}`);
-        }
-
-        const result: ApiResponse = await response.json();
-        return result;
-    } catch (error: any) {
-        if (retries > 0) {
-            console.warn(`API Request Failed, retrying... (${retries} left)`);
-            await new Promise(res => setTimeout(res, 1000)); // Wait 1s before retry
-            return apiRequest(payload, retries - 1);
-        }
-        console.error("API Request Failed:", error);
-        return { status: 'error', message: error.message || "Network request failed" };
-    }
-};
-
-/**
- * Fetches the full application state from Google Sheets
+ * Fetches the full application state from Supabase
+ * For now, returns null as we're migrating to direct Supabase queries
  */
 export const syncDown = async (spreadsheetId: string): Promise<Partial<CalculatorState> | null> => {
-  const result = await apiRequest({ action: 'SYNC_DOWN', payload: { spreadsheetId } });
-  
-  if (result.status === 'success') {
-    return result.data;
-  } else {
-    console.error("Sync Down Error:", result.message);
+  // Deprecated: Use direct Supabase queries instead
+  console.warn('syncDown is deprecated. Use direct Supabase queries from hooks.');
+  return null;
+};
+
+/**
+ * Pushes the full application state to Supabase
+ * For now, returns false as we're migrating to direct Supabase queries
+ */
+export const syncUp = async (state: CalculatorState, spreadsheetId: string): Promise<boolean> => {
+  // Deprecated: Use direct Supabase queries instead
+  console.warn('syncUp is deprecated. Use direct Supabase queries from hooks.');
+  return false;
+};
+
+/**
+ * Marks job as paid and creates P&L record
+ */
+export const markJobPaid = async (estimateId: string): Promise<{success: boolean, estimate?: EstimateRecord}> => {
+  if (!isApiConfigured()) {
+    return { success: false };
+  }
+
+  try {
+    // Update estimate status
+    const { error: updateError } = await supabase
+      .from('estimates')
+      .update({
+        status: 'paid',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', estimateId);
+
+    if (updateError) throw updateError;
+
+    // TODO: Create P&L record via RPC function
+    // const { data: plData, error: plError } = await supabase.rpc('create_profit_loss_record', { p_estimate_id: estimateId });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error('Mark job paid error:', error);
+    return { success: false };
+  }
+};
+
+/**
+ * Creates a work order record in Supabase
+ */
+export const createWorkOrderSheet = async (estimateData: EstimateRecord): Promise<string | null> => {
+  // Deprecated: PDF generation is now client-side with Supabase Storage
+  console.warn('createWorkOrderSheet is deprecated. Use client-side PDF generation with Supabase Storage.');
+  return null;
+};
+
+/**
+ * Logs crew time to the estimate
+ */
+export const logCrewTime = async (
+  estimateId: string, 
+  startTime: string, 
+  endTime: string | null, 
+  userId: string
+): Promise<boolean> => {
+  if (!isApiConfigured()) return false;
+
+  try {
+    const { error } = await supabase
+      .from('material_logs')
+      .insert({
+        company_id: (await supabase.from('profiles').select('company_id').eq('id', userId).single()).data?.company_id,
+        estimate_id: estimateId,
+        material_name: 'Labor',
+        material_category: 'labor',
+        quantity: 0,
+        unit: 'hours',
+        logged_by_id: userId,
+        log_date: new Date().toISOString().split('T')[0],
+        log_type: 'labor_log',
+        notes: `Start: ${startTime}, End: ${endTime || 'Ongoing'}`,
+      });
+
+    return !error;
+  } catch (error) {
+    console.error('Log crew time error:', error);
+    return false;
+  }
+};
+
+/**
+ * Marks job as complete and logs material usage
+ */
+export const completeJob = async (
+  estimateId: string, 
+  actuals: {
+    openCellSets: number;
+    closedCellSets: number;
+    inventory: Array<{ name: string; quantity: number; unit: string }>;
+  }
+): Promise<boolean> => {
+  if (!isApiConfigured()) return false;
+
+  try {
+    // Update estimate execution status
+    const { error: updateError } = await supabase
+      .from('estimates')
+      .update({
+        execution_status: 'completed',
+        actuals: actuals as any,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', estimateId);
+
+    if (updateError) throw updateError;
+
+    // TODO: Trigger inventory deduction via RPC
+    // const { error: rpcError } = await supabase.rpc('deduct_inventory_for_job', { p_estimate_id: estimateId });
+
+    return true;
+  } catch (error) {
+    console.error('Complete job error:', error);
+    return false;
+  }
+};
+
+/**
+ * Deletes an estimate from Supabase
+ */
+export const deleteEstimate = async (estimateId: string): Promise<boolean> => {
+  if (!isApiConfigured()) return false;
+
+  try {
+    const { error } = await supabase
+      .from('estimates')
+      .delete()
+      .eq('id', estimateId);
+
+    return !error;
+  } catch (error) {
+    console.error('Delete estimate error:', error);
+    return false;
+  }
+};
+
+/**
+ * Uploads a PDF to Supabase Storage
+ */
+export const savePdfToDrive = async (
+  fileName: string, 
+  base64Data: string, 
+  estimateId: string | undefined,
+  folderId?: string
+): Promise<string | null> => {
+  if (!isApiConfigured()) return null;
+
+  try {
+    const companyId = await (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return null;
+      const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', session.user.id).single();
+      return profile?.company_id;
+    })();
+
+    if (!companyId) return null;
+
+    const filePath = `${companyId}/estimates/${estimateId || 'draft'}/${fileName}`;
+    
+    // Convert base64 to blob
+    const blob = await fetch(`data:application/pdf;base64,${base64Data}`).then(r => r.blob());
+
+    const { data, error } = await supabase.storage
+      .from('job_attachments')
+      .upload(filePath, blob, { upsert: true });
+
+    if (error) throw error;
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('job_attachments')
+      .getPublicUrl(filePath);
+
+    return urlData.publicUrl;
+  } catch (error) {
+    console.error('Save PDF error:', error);
     return null;
   }
 };
 
 /**
- * Pushes the full application state to Google Sheets
+ * Uploads an image to Supabase Storage
  */
-export const syncUp = async (state: CalculatorState, spreadsheetId: string): Promise<boolean> => {
-  const result = await apiRequest({ action: 'SYNC_UP', payload: { state, spreadsheetId } });
-  return result.status === 'success';
+export const uploadImage = async (
+  base64Data: string, 
+  fileName: string = 'image.jpg'
+): Promise<string | null> => {
+  if (!isApiConfigured()) return null;
+
+  try {
+    const companyId = await (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return null;
+      const { data: profile } = await supabase.from('profiles').select('company_id').eq('id', session.user.id).single();
+      return profile?.company_id;
+    })();
+
+    if (!companyId) return null;
+
+    const filePath = `${companyId}/site-photos/${Date.now()}-${fileName}`;
+    
+    // Convert base64 to blob
+    const blob = await fetch(base64Data).then(r => r.blob());
+
+    const { data, error } = await supabase.storage
+      .from('job_attachments')
+      .upload(filePath, blob, { upsert: true });
+
+    if (error) throw error;
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('job_attachments')
+      .getPublicUrl(filePath);
+
+    return urlData.publicUrl;
+  } catch (error) {
+    console.error('Upload image error:', error);
+    return null;
+  }
+};
+
+// ============================================================================
+// DIRECT SUPABASE QUERY FUNCTIONS (Recommended approach)
+// ============================================================================
+
+/**
+ * Get all estimates for current user's company
+ */
+export const getEstimates = async (): Promise<EstimateRecord[]> => {
+  if (!isApiConfigured()) return [];
+
+  const { data, error } = await supabase
+    .from('estimates')
+    .select('*, customers(*)')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.error('Get estimates error:', error);
+    return [];
+  }
+
+  return data as EstimateRecord[];
 };
 
 /**
- * Marks job as paid and triggers P&L calculation on backend
+ * Get a single estimate by ID
  */
-export const markJobPaid = async (estimateId: string, spreadsheetId: string): Promise<{success: boolean, estimate?: EstimateRecord}> => {
-    const result = await apiRequest({ action: 'MARK_JOB_PAID', payload: { estimateId, spreadsheetId } });
-    return { success: result.status === 'success', estimate: result.data?.estimate };
+export const getEstimateById = async (id: string): Promise<EstimateRecord | null> => {
+  if (!isApiConfigured()) return null;
+
+  const { data, error } = await supabase
+    .from('estimates')
+    .select('*, customers(*)')
+    .eq('id', id)
+    .single();
+
+  if (error) return null;
+  return data as EstimateRecord;
 };
 
 /**
- * Creates a standalone Work Order Google Sheet
+ * Get all customers for current user's company
  */
-export const createWorkOrderSheet = async (estimateData: EstimateRecord, folderId: string | undefined, spreadsheetId: string): Promise<string | null> => {
-  const result = await apiRequest({ action: 'CREATE_WORK_ORDER', payload: { estimateData, folderId, spreadsheetId } });
-  if (result.status === 'success') return result.data.url;
-  console.error("Create WO Error:", result.message);
-  return null;
+export const getCustomers = async (): Promise<CustomerProfile[]> => {
+  if (!isApiConfigured()) return [];
+
+  const { data, error } = await supabase
+    .from('customers')
+    .select('*')
+    .order('name');
+
+  if (error) {
+    console.error('Get customers error:', error);
+    return [];
+  }
+
+  return data as CustomerProfile[];
 };
 
 /**
- * Logs crew time to the Work Order Sheet
+ * Get all inventory items for current user's company
  */
-export const logCrewTime = async (workOrderUrl: string, startTime: string, endTime: string | null, user: string): Promise<boolean> => {
-    const result = await apiRequest({ action: 'LOG_TIME', payload: { workOrderUrl, startTime, endTime, user } });
-    return result.status === 'success';
+export const getInventoryItems = async (): Promise<WarehouseItem[]> => {
+  if (!isApiConfigured()) return [];
+
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select('*')
+    .order('name');
+
+  if (error) {
+    console.error('Get inventory error:', error);
+    return [];
+  }
+
+  return data as WarehouseItem[];
 };
 
 /**
- * Marks job as complete and syncs inventory
+ * Get company settings
  */
-export const completeJob = async (estimateId: string, actuals: any, spreadsheetId: string): Promise<boolean> => {
-    const result = await apiRequest({ action: 'COMPLETE_JOB', payload: { estimateId, actuals, spreadsheetId } });
-    return result.status === 'success';
+export const getCompanySettings = async (): Promise<any> => {
+  if (!isApiConfigured()) return null;
+
+  const { data, error } = await supabase
+    .from('company_settings')
+    .select('*')
+    .single();
+
+  if (error) return null;
+  return data;
 };
 
 /**
- * Deletes an estimate and potentially its associated files
+ * Update company settings
  */
-export const deleteEstimate = async (estimateId: string, spreadsheetId: string): Promise<boolean> => {
-    const result = await apiRequest({ action: 'DELETE_ESTIMATE', payload: { estimateId, spreadsheetId } });
-    return result.status === 'success';
+export const updateCompanySettings = async (settings: any): Promise<boolean> => {
+  if (!isApiConfigured()) return false;
+
+  const { data: existing } = await supabase
+    .from('company_settings')
+    .select('id')
+    .single();
+
+  if (existing) {
+    const { error } = await supabase
+      .from('company_settings')
+      .update({
+        costs_json: settings.costs || {},
+        yields_json: settings.yields || {},
+        warehouse_counts: settings.warehouse || {},
+        lifetime_usage: settings.lifetimeUsage || {},
+        pricing_defaults: settings.pricingDefaults || {},
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existing.id);
+
+    return !error;
+  } else {
+    const { error } = await supabase
+      .from('company_settings')
+      .insert({
+        costs_json: settings.costs || {},
+        yields_json: settings.yields || {},
+        warehouse_counts: settings.warehouse || {},
+        lifetime_usage: settings.lifetimeUsage || {},
+        pricing_defaults: settings.pricingDefaults || {},
+      });
+
+    return !error;
+  }
 };
 
 /**
- * Uploads a PDF to Google Drive
+ * Create a new estimate
  */
-export const savePdfToDrive = async (fileName: string, base64Data: string, estimateId: string | undefined, spreadsheetId: string, folderId?: string) => {
-  const result = await apiRequest({ action: 'SAVE_PDF', payload: { fileName, base64Data, estimateId, spreadsheetId, folderId } });
-  return result.status === 'success' ? result.data.url : null;
+export const createEstimate = async (estimate: Partial<EstimateRecord>): Promise<string | null> => {
+  if (!isApiConfigured()) return null;
+
+  const { data, error } = await supabase
+    .from('estimates')
+    .insert(estimate as any)
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('Create estimate error:', error);
+    return null;
+  }
+
+  return data.id;
 };
 
 /**
- * Uploads an image to Google Drive and returns the direct link
+ * Update an estimate
  */
-export const uploadImage = async (base64Data: string, spreadsheetId: string, fileName: string = 'image.jpg'): Promise<string | null> => {
-  const result = await apiRequest({ action: 'UPLOAD_IMAGE', payload: { base64Data, spreadsheetId, fileName } });
-  return result.status === 'success' ? result.data.url : null;
+export const updateEstimate = async (id: string, updates: Partial<EstimateRecord>): Promise<boolean> => {
+  if (!isApiConfigured()) return false;
+
+  const { error } = await supabase
+    .from('estimates')
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+
+  return !error;
 };
 
 /**
- * Authenticates user against backend
+ * Create a new customer
  */
-export const loginUser = async (username: string, password: string): Promise<UserSession | null> => {
-    const result = await apiRequest({ action: 'LOGIN', payload: { username, password } });
-    if (result.status === 'success') return result.data;
-    throw new Error(result.message || "Login failed");
+export const createCustomer = async (customer: CustomerProfile): Promise<string | null> => {
+  if (!isApiConfigured()) return null;
+
+  const { data, error } = await supabase
+    .from('customers')
+    .insert(customer as any)
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('Create customer error:', error);
+    return null;
+  }
+
+  return data.id;
 };
 
 /**
- * Authenticates crew member using PIN
+ * Update a customer
  */
-export const loginCrew = async (username: string, password: string): Promise<UserSession | null> => {
-    const result = await apiRequest({ action: 'CREW_LOGIN', payload: { username, password } });
-    if (result.status === 'success') return result.data;
-    throw new Error(result.message || "Crew Login failed");
+export const updateCustomer = async (id: string, updates: Partial<CustomerProfile>): Promise<boolean> => {
+  if (!isApiConfigured()) return false;
+
+  const { error } = await supabase
+    .from('customers')
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+
+  return !error;
 };
 
 /**
- * Creates a new company account
+ * Get material logs for an estimate
  */
-export const signupUser = async (username: string, password: string, companyName: string): Promise<UserSession | null> => {
-    const result = await apiRequest({ action: 'SIGNUP', payload: { username, password, companyName } });
-    if (result.status === 'success') return result.data;
-    throw new Error(result.message || "Signup failed");
+export const getMaterialLogs = async (estimateId: string): Promise<any[]> => {
+  if (!isApiConfigured()) return [];
+
+  const { data, error } = await supabase
+    .from('material_logs')
+    .select('*')
+    .eq('estimate_id', estimateId)
+    .order('log_date', { ascending: false });
+
+  if (error) {
+    console.error('Get material logs error:', error);
+    return [];
+  }
+
+  return data;
 };
 
 /**
- * Submits lead for trial access
+ * Create a material log entry
  */
-export const submitTrial = async (name: string, email: string, phone: string): Promise<boolean> => {
-    const result = await apiRequest({ action: 'SUBMIT_TRIAL', payload: { name, email, phone } });
-    return result.status === 'success';
+export const createMaterialLog = async (log: {
+  estimate_id: string;
+  material_name: string;
+  material_category: string;
+  quantity: number;
+  unit: string;
+  notes?: string;
+}): Promise<boolean> => {
+  if (!isApiConfigured()) return false;
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return false;
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('company_id')
+    .eq('id', session.user.id)
+    .single();
+
+  if (!profile) return false;
+
+  const { error } = await supabase
+    .from('material_logs')
+    .insert({
+      company_id: profile.company_id,
+      estimate_id: log.estimate_id,
+      material_name: log.material_name,
+      material_category: log.material_category,
+      quantity: log.quantity,
+      unit: log.unit,
+      logged_by_id: session.user.id,
+      log_date: new Date().toISOString().split('T')[0],
+      notes: log.notes,
+    });
+
+  return !error;
 };
