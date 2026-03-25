@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { Upload, Save, Loader2, Users, KeyRound, ShieldCheck, Copy, User } from 'lucide-react';
 import { CalculatorState, UserSession } from '../types';
 import { uploadImage } from '../services/api';
+import { supabase } from '../services/supabase';
 
 interface ProfileProps {
   state: CalculatorState;
@@ -10,7 +11,7 @@ interface ProfileProps {
   onManualSync: () => void;
   syncStatus: string;
   username?: string; // Passed from session to display Company ID
-  spreadsheetId?: string; // Needed for upload auth
+  spreadsheetId?: string; // Needed for upload auth (legacy)
   session?: UserSession;
 }
 
@@ -58,7 +59,7 @@ export const Profile: React.FC<ProfileProps> = ({ state, onUpdateProfile, onManu
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    
+
     // Check size (max 5MB)
     if (file.size > 5 * 1024 * 1024) {
         alert("File too large. Max 5MB.");
@@ -70,16 +71,13 @@ export const Profile: React.FC<ProfileProps> = ({ state, onUpdateProfile, onManu
         const reader = new FileReader();
         reader.onloadend = async () => {
             const base64 = reader.result as string;
-            
-            if (spreadsheetId) {
-                const url = await uploadImage(base64, spreadsheetId, "company_logo.jpg");
-                if (url) {
-                    onUpdateProfile('logoUrl', url);
-                } else {
-                    alert("Upload failed. Please try again.");
-                }
+
+            // Use Supabase Storage
+            const url = await uploadImage(base64, "company_logo.jpg");
+            if (url) {
+                onUpdateProfile('logoUrl', url);
             } else {
-                alert("Online session required to upload logo.");
+                alert("Upload failed. Please try again.");
             }
             setIsUploading(false);
         };

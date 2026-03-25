@@ -13,7 +13,6 @@ import { useSync } from '../hooks/useSync';
 import { useEstimates } from '../hooks/useEstimates';
 import { calculateResults } from '../utils/calculatorHelpers';
 import { generateEstimatePDF, generateDocumentPDF, generateWorkOrderPDF } from '../utils/pdfGenerator';
-import { syncUp } from '../services/api';
 
 import LoginPage from './LoginPage';
 import { Layout } from './Layout';
@@ -182,14 +181,7 @@ const SprayFoamCalculator: React.FC = () => {
       });
 
       if (savedRecord) {
-          if (session?.spreadsheetId) {
-             dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
-             const stateSnapshot = {
-                 ...appData,
-                 savedEstimates: appData.savedEstimates.map(e => e.id === savedRecord.id ? savedRecord : e)
-             };
-             await syncUp(stateSnapshot, session.spreadsheetId);
-          }
+          // Supabase auto-syncs via useSync hook - no manual sync needed
           await handleMarkPaid(savedRecord.id);
       }
   };

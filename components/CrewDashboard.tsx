@@ -161,31 +161,24 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, onLogout, s
   const handleCompleteJobSubmit = async () => {
       if (!selectedJob) return;
       setIsCompleting(true);
-      
-      try {
-        const sessionStr = localStorage.getItem('foamProSession');
-        if (!sessionStr) throw new Error("Session expired. Please log out and back in.");
-        
-        const session = JSON.parse(sessionStr);
-        if (!session.spreadsheetId) throw new Error("Invalid session data. Please log out and back in.");
 
+      try {
         const finalData = {
             ...actuals,
             completionDate: new Date().toISOString(),
-            completedBy: session.username || "Crew"
+            completedBy: session?.username || "Crew"
         };
 
-        const success = await completeJob(selectedJob.id, finalData, session.spreadsheetId);
-        
+        const success = await completeJob(selectedJob.id, finalData);
+
         if (success) {
             setShowCompletionModal(false);
             setSelectedJobId(null);
-            
-            // Sync DOWN to get the latest status from server (Completed)
-            // This prevents local "In Progress" state from overwriting the server
+
+            // Refresh data from Supabase to get latest status
             setTimeout(async () => {
                 try {
-                    await onSync(); // This calls forceRefresh (Sync Down)
+                    await onSync(); // This calls forceRefresh
                     alert("Job Completed Successfully!");
                 } catch(e) {
                     console.error("Sync failed after completion", e);

@@ -300,7 +300,7 @@ export interface UserSession {
   username: string;
   companyName: string;
   companyId?: string;
-  spreadsheetId: string;
+  spreadsheetId?: string; // Optional - legacy support
   folderId?: string;
   token?: string;
   role: 'admin' | 'crew';
