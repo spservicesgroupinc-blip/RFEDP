@@ -48,9 +48,13 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLoginSuccess, installPrompt, on
           })
           if (signUpError) throw signUpError
           if (data.user) {
-            // Wait briefly for trigger to create profile/company rows
-            await new Promise(r => setTimeout(r, 800))
-            const result = await getProfileAndCompany(data.user.id)
+            // Poll for profile/company rows created by DB trigger (up to 5s)
+            let result = null
+            for (let attempt = 0; attempt < 10; attempt++) {
+              await new Promise(r => setTimeout(r, 500))
+              result = await getProfileAndCompany(data.user.id)
+              if (result) break
+            }
             onLoginSuccess({
               username: data.user.email || formData.username,
               companyName: result?.company.name || formData.companyName,

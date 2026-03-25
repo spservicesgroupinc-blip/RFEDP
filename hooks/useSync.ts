@@ -31,12 +31,22 @@ export const useSync = () => {
 
     const initializeApp = async () => {
       dispatch({ type: 'SET_LOADING', payload: true });
+
+      // Supabase session — no Google Sheet yet, start with clean default state
+      if (!session.spreadsheetId) {
+        dispatch({ type: 'LOAD_DATA', payload: DEFAULT_STATE });
+        dispatch({ type: 'SET_INITIALIZED', payload: true });
+        dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
+        dispatch({ type: 'SET_LOADING', payload: false });
+        return;
+      }
+
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
-      
+
       try {
           // Attempt Fetch from Cloud (Source of Truth)
           const cloudData = await syncDown(session.spreadsheetId);
-          
+
           if (cloudData) {
             // Deep merge cloud data over default state
             const mergedState = {
@@ -53,15 +63,15 @@ export const useSync = () => {
             };
 
             dispatch({ type: 'LOAD_DATA', payload: mergedState });
-            dispatch({ type: 'SET_INITIALIZED', payload: true }); 
+            dispatch({ type: 'SET_INITIALIZED', payload: true });
             lastSyncedStateRef.current = JSON.stringify(mergedState);
             dispatch({ type: 'SET_SYNC_STATUS', payload: 'success' });
-            
+
             // Clear successful sync status after delay
             setTimeout(() => {
                 dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' });
             }, 3000);
-            
+
             // Check if PIN is missing and warn
             if (!mergedState.companyProfile.crewUsername || !mergedState.companyProfile.crewPassword) {
                 console.warn("Crew credentials missing from cloud data");
@@ -73,10 +83,10 @@ export const useSync = () => {
           }
       } catch (e) {
           console.error("Cloud sync failed:", e);
-          
+
           // Fallback: If cloud fails (offline), try Local Storage
           const localSaved = localStorage.getItem(`foamProState_${session.username}`);
-          
+
           if (localSaved) {
               const localState = JSON.parse(localSaved);
               dispatch({ type: 'LOAD_DATA', payload: localState });
@@ -102,6 +112,7 @@ export const useSync = () => {
   useEffect(() => {
     if (ui.isLoading || !ui.isInitialized || !session) return;
     if (session.role === 'crew') return; // Crew doesn't auto-sync UP generally
+    if (!session.spreadsheetId) return; // Supabase-only user — no GAS sheet to sync
 
     const currentStateStr = JSON.stringify(appData);
     
@@ -134,7 +145,7 @@ export const useSync = () => {
 
   // 4. MANUAL FORCE SYNC (Push)
   const handleManualSync = async () => {
-    if (!session) return;
+    if (!session || !session.spreadsheetId) return;
     dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
     
     const success = await syncUp(appData, session.spreadsheetId);
@@ -152,7 +163,7 @@ export const useSync = () => {
 
   // 5. FORCE REFRESH (Pull) - New for Crew Dashboard
   const forceRefresh = async () => {
-      if (!session) return;
+      if (!session || !session.spreadsheetId) return;
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
       try {
           const cloudData = await syncDown(session.spreadsheetId);
