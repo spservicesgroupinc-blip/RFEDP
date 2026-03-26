@@ -163,6 +163,10 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, onLogout, s
       setIsCompleting(true);
 
       try {
+        // Retrieve session from localStorage to get username
+        const sessionStr = localStorage.getItem('foamProSession');
+        const session = sessionStr ? JSON.parse(sessionStr) : null;
+        
         const finalData = {
             ...actuals,
             completionDate: new Date().toISOString(),
