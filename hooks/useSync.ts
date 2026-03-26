@@ -5,11 +5,9 @@ import {
   getCustomers, 
   getInventoryItems, 
   getCompanySettings,
-  updateCompanySettings,
-  createEstimate,
-  updateEstimate,
-  createCustomer,
-  updateCustomer,
+  upsertCompanySettings,
+  upsertEstimate,
+  upsertCustomer,
 } from '../services/api';
 
 export const useSync = () => {
@@ -92,7 +90,7 @@ export const useSync = () => {
     initializeApp();
   }, [session, dispatch]);
 
-  // 3. AUTO-SAVE TO SUPABASE (Debounced)
+  // 3. AUTO-SAVE TO SUPABASE (Debounced 1000ms with Optimistic Updates)
   useEffect(() => {
     if (ui.isLoading || !ui.isInitialized || !session) return;
     if (session.role === 'crew') return; // Crew doesn't auto-sync
@@ -102,16 +100,18 @@ export const useSync = () => {
     // Always backup to local storage
     localStorage.setItem(`foamProState_${session.username}`, currentStateStr);
 
-    // Debounce the Supabase Sync
+    // Immediately mark as pending (Unsaved changes)
     dispatch({ type: 'SET_SYNC_STATUS', payload: 'pending' });
+
+    // Debounce the Supabase Sync (1000ms)
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
 
     syncTimerRef.current = setTimeout(async () => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
 
       try {
-        // Save company settings
-        await updateCompanySettings({
+        // Save company settings via upsert
+        await upsertCompanySettings({
           costs: appData.costs,
           yields: appData.yields,
           warehouse: appData.warehouse,
@@ -125,7 +125,7 @@ export const useSync = () => {
         console.error('Auto-save error:', error);
         dispatch({ type: 'SET_SYNC_STATUS', payload: 'error' });
       }
-    }, 3000);
+    }, 1000); // 1000ms debounce
 
     return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
   }, [appData, ui.isLoading, ui.isInitialized, session, dispatch]);
@@ -136,8 +136,8 @@ export const useSync = () => {
     dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
 
     try {
-      // Save company settings
-      await updateCompanySettings({
+      // Save company settings via upsert
+      await upsertCompanySettings({
         costs: appData.costs,
         yields: appData.yields,
         warehouse: appData.warehouse,
@@ -198,18 +198,13 @@ export const useSync = () => {
   // ============================================================================
 
   /**
-   * Save a single estimate to Supabase
+   * Save a single estimate to Supabase via upsert
    */
   const saveEstimateToSupabase = async (estimate: any): Promise<boolean> => {
     if (!session) return false;
     
     try {
-      if (estimate.id) {
-        return await updateEstimate(estimate.id, estimate);
-      } else {
-        const newId = await createEstimate(estimate);
-        return !!newId;
-      }
+      return await upsertEstimate(estimate);
     } catch (error) {
       console.error('Save estimate error:', error);
       return false;
@@ -217,18 +212,13 @@ export const useSync = () => {
   };
 
   /**
-   * Save a single customer to Supabase
+   * Save a single customer to Supabase via upsert
    */
   const saveCustomerToSupabase = async (customer: any): Promise<boolean> => {
     if (!session) return false;
     
     try {
-      if (customer.id) {
-        return await updateCustomer(customer.id, customer);
-      } else {
-        const newId = await createCustomer(customer);
-        return !!newId;
-      }
+      return await upsertCustomer(customer);
     } catch (error) {
       console.error('Save customer error:', error);
       return false;

@@ -9,10 +9,8 @@ import {
   getEstimates,
   getCustomers,
   getInventoryItems,
-  createEstimate,
-  updateEstimate,
-  createCustomer,
-  updateCustomer,
+  upsertEstimate,
+  upsertCustomer,
   savePurchaseOrder,
 } from '../services/api';
 import { generateWorkOrderPDF, generateDocumentPDF } from '../utils/pdfGenerator';
@@ -183,6 +181,15 @@ export const useEstimates = () => {
                         targetStatus === 'Paid' ? 'Payment Recorded' : 'Estimate Saved';
     dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: actionLabel } });
 
+    // Background Supabase upsert (non-blocking)
+    dispatch({ type: 'SET_SYNC_STATUS', payload: 'pending' });
+    (async () => {
+      dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
+      const ok = await upsertEstimate(newEstimate);
+      dispatch({ type: 'SET_SYNC_STATUS', payload: ok ? 'success' : 'error' });
+      if (ok) setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 3000);
+    })();
+
     return newEstimate;
   };
 
@@ -218,6 +225,7 @@ export const useEstimates = () => {
           updatePayload.warehouse = newWarehouse;
       }
 
+      // Use updatePayload to ensure warehouse restore is applied
       dispatch({ type: 'UPDATE_DATA', payload: updatePayload });
 
       if (ui.editingEstimateId === id) {
@@ -256,22 +264,28 @@ export const useEstimates = () => {
   const saveCustomer = async (customerData: CustomerProfile) => {
     let updatedCustomers = [...appData.customers];
     const existingIndex = updatedCustomers.findIndex(c => c.id === customerData.id);
-    
+
     if (existingIndex >= 0) {
         updatedCustomers[existingIndex] = customerData;
-        // Update in Supabase
-        await updateCustomer(customerData.id, customerData);
     } else {
         updatedCustomers.push(customerData);
-        // Create in Supabase
-        await createCustomer(customerData);
     }
 
+    // 1. Optimistic local update first
     if (appData.customerProfile.id === customerData.id) {
         dispatch({ type: 'UPDATE_DATA', payload: { customers: updatedCustomers, customerProfile: customerData } });
     } else {
         dispatch({ type: 'UPDATE_DATA', payload: { customers: updatedCustomers } });
     }
+
+    // 2. Background Supabase upsert
+    dispatch({ type: 'SET_SYNC_STATUS', payload: 'pending' });
+    (async () => {
+      dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
+      const ok = await upsertCustomer(customerData);
+      dispatch({ type: 'SET_SYNC_STATUS', payload: ok ? 'success' : 'error' });
+      if (ok) setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 3000);
+    })();
   };
 
   const confirmWorkOrder = async (results: CalculationResults, workOrderLines?: InvoiceLineItem[]) => {

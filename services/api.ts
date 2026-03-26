@@ -685,3 +685,101 @@ export const createMaterialLog = async (log: {
 
   return !error;
 };
+
+// ============================================================================
+// UPSERT FUNCTIONS (for optimistic updates with debounce)
+// ============================================================================
+
+/**
+ * Upsert company settings (insert or update by company_id)
+ */
+export const upsertCompanySettings = async (settings: {
+  costs?: any;
+  yields?: any;
+  warehouse?: any;
+  lifetimeUsage?: any;
+  pricingDefaults?: any;
+}): Promise<boolean> => {
+  if (!isApiConfigured()) return false;
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return false;
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('company_id')
+    .eq('id', session.user.id)
+    .single();
+
+  if (!profile) return false;
+
+  const { error } = await supabase
+    .from('company_settings')
+    .upsert({
+      company_id: profile.company_id,
+      costs_json: settings.costs || {},
+      yields_json: settings.yields || {},
+      warehouse_counts: settings.warehouse || {},
+      lifetime_usage: settings.lifetimeUsage || {},
+      pricing_defaults: settings.pricingDefaults || {},
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'company_id' });
+
+  return !error;
+};
+
+/**
+ * Upsert estimate (insert or update by id)
+ */
+export const upsertEstimate = async (estimate: Partial<EstimateRecord>): Promise<boolean> => {
+  if (!isApiConfigured()) return false;
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return false;
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('company_id')
+    .eq('id', session.user.id)
+    .single();
+
+  if (!profile) return false;
+
+  const { error } = await supabase
+    .from('estimates')
+    .upsert({
+      ...estimate,
+      company_id: profile.company_id,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' });
+
+  return !error;
+};
+
+/**
+ * Upsert customer (insert or update by id)
+ */
+export const upsertCustomer = async (customer: CustomerProfile): Promise<boolean> => {
+  if (!isApiConfigured()) return false;
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return false;
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('company_id')
+    .eq('id', session.user.id)
+    .single();
+
+  if (!profile) return false;
+
+  const { error } = await supabase
+    .from('customers')
+    .upsert({
+      ...customer,
+      company_id: profile.company_id,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'id' });
+
+  return !error;
+};
