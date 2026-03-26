@@ -1,0 +1,573 @@
+================================================================================
+  RFE FOAM PRO — PROJECT REPORT
+  Generated: 2026-03-26
+  Codebase: C:\Users\russe\OneDrive\Desktop\RFEDP
+================================================================================
+
+--------------------------------------------------------------------------------
+1. PROJECT OVERVIEW
+--------------------------------------------------------------------------------
+Name         : RFE Foam Pro
+Type         : Progressive Web App (PWA)
+Stack        : React 19 + TypeScript + Vite 6 + Tailwind CSS v4 + Supabase
+Deployment   : Vercel (vercel.json present)
+Purpose      : Enterprise field-operations suite for spray foam insulation
+               contractors. Covers estimation, job management, crew dispatch,
+               invoicing, inventory/warehouse tracking, and P&L reporting.
+
+--------------------------------------------------------------------------------
+2. TECH STACK & DEPENDENCIES
+--------------------------------------------------------------------------------
+Runtime / UI
+  react                  ^19.2.3     — UI framework
+  react-dom              ^19.2.3     — DOM renderer
+  lucide-react           ^0.561.0    — Icon library
+  tailwindcss            ^4.2.1      — Utility CSS (v4 @theme custom tokens)
+  @tailwindcss/vite      ^4.2.1      — Vite integration for Tailwind v4
+
+Backend / Data
+  @supabase/supabase-js  ^2.100.0    — Auth, DB (PostgreSQL), Storage, Realtime,
+                                       Edge Functions client
+
+PDF Generation
+  jspdf                  2.5.1       — PDF creation
+  jspdf-autotable        3.8.2       — Table plugin for jsPDF
+
+Build / Dev Tools
+  vite                   ^6.2.0      — Build tool (port 3000, @ path alias)
+  typescript             ~5.8.2      — Type checking
+  @vitejs/plugin-react   ^5.0.0      — React HMR plugin
+
+PWA
+  manifest.json          — Icons, name, shortcuts, display overrides
+  sw.js                  — Service worker (caching strategy)
+  index.html             — Registers SW, handles beforeinstallprompt
+
+--------------------------------------------------------------------------------
+3. DIRECTORY STRUCTURE (58 FILES)
+--------------------------------------------------------------------------------
+RFEDP/
+│
+├── index.html                    PWA entry point; registers service worker;
+│                                 captures beforeinstallprompt for install button
+├── index.tsx                     React root — ReactDOM.createRoot mount
+├── App.tsx                       Root component — wraps SprayFoamCalculator in
+│                                 CalculatorProvider context
+├── index.css                     Tailwind v4 import + @theme brand tokens
+├── types.ts                      All shared TypeScript interfaces & enums
+├── constants.ts                  Reads VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY
+├── tsconfig.json                 ES2022 target, bundler resolution, strict off
+├── vite.config.ts                Plugin: React + Tailwind; resolve @ → root
+├── package.json
+├── manifest.json                 PWA manifest (shortcuts, icons, display)
+├── sw.js                         Service worker
+├── vercel.json                   SPA rewrite: all routes → index.html
+├── metadata.json                 (Workspace/tool metadata)
+├── supabase_schema.sql           Full Supabase PostgreSQL schema
+│
+├── components/
+│   ├── SprayFoamCalculator.tsx   *** MAIN SHELL — view router, data init ***
+│   ├── Layout.tsx                Desktop sidebar + mobile bottom nav + toasts
+│   ├── LoginPage.tsx             Auth: login / signup / forgot-password
+│   ├── Dashboard.tsx             Operations dashboard: job pipeline, P&L metrics
+│   ├── Calculator.tsx            Calculator view composer (assembles sub-sections)
+│   ├── CrewDashboard.tsx         Crew-only mobile view (work orders, time clock)
+│   ├── Customers.tsx             CRM: customer list + detail/history
+│   ├── Warehouse.tsx             Inventory: foam sets + line items
+│   ├── MaterialReport.tsx        Material usage report per job
+│   ├── Settings.tsx              Foam yields, stroke counts, unit costs config
+│   ├── Profile.tsx               Company profile (logo, address, crew creds)
+│   ├── EstimateDetail.tsx        Read-only estimate view
+│   ├── EstimateStage.tsx         Estimate finalization — editable lines, PDF gen
+│   ├── WorkOrderStage.tsx        Work order creation — scheduling, crew notes
+│   ├── InvoiceStage.tsx          Invoice creation — editable lines, mark paid
+│   ├── JobProgress.tsx           5-step pipeline progress bar component
+│   │
+│   └── calculator/
+│       ├── ActionBar.tsx         Status-aware bottom action buttons
+│       ├── CalculatorHeader.tsx  Customer picker, mode select, next-step CTA
+│       ├── CrewReportBanner.tsx  Admin banner: "job completed" actuals from crew
+│       ├── DimensionsSection.tsx L/W/H/pitch input + additional areas list
+│       ├── InsulationSpecsSection.tsx  Wall/roof foam type, depth, waste %, sqft toggle
+│       ├── InventorySection.tsx  Job-level inventory items (linked to warehouse)
+│       ├── LaborSection.tsx      Man-hours + trip/fuel fee inputs
+│       └── ResultsCard.tsx       Live results: area, bdft, sets, strokes, margin
+│
+├── context/
+│   └── CalculatorContext.tsx     Global state: React.createContext + useReducer
+│
+├── hooks/
+│   ├── useSync.ts                Session recovery, Supabase init-load, auto-save
+│   ├── useEstimates.ts           CRUD: estimates, work orders, invoices, customers
+│   └── useRealtime.ts            Supabase Realtime presence (admin/crew online)
+│
+├── services/
+│   ├── supabase.ts               Supabase client init + Profile/Company helpers
+│   └── api.ts                    All Supabase DB/Storage API functions
+│
+├── utils/
+│   ├── calculatorHelpers.ts      Core calculation engine + pitch parser
+│   └── pdfGenerator.ts           jsPDF document generation (4 document types)
+│
+├── src/services/
+│   └── supabase.ts               Legacy/duplicate Supabase client (not primary)
+│
+├── supabase/functions/
+│   └── create-crew-user/
+│       └── index.ts              Edge Function — admin-only crew user creation
+│
+├── backend/
+│   └── Code.js                   Deprecated Google Apps Script backend
+│
+└── docs/plans/
+    └── 2026-03-26-ux-workflow-button-audit.md
+
+--------------------------------------------------------------------------------
+4. APPLICATION ARCHITECTURE
+--------------------------------------------------------------------------------
+
+ENTRY FLOW
+----------
+index.html
+  └── index.tsx  (ReactDOM.createRoot)
+        └── App.tsx
+              └── CalculatorProvider        (global React context)
+                    └── SprayFoamCalculator (main shell + view router)
+                          ├── useSync       (session recovery + data load)
+                          ├── useEstimates  (CRUD operations)
+                          ├── useRealtime   (presence tracking)
+                          └── view switch   (renders one of 14 views)
+
+VIEW ROUTING
+------------
+Controlled by UIState.view (no URL router). Possible values:
+  'calculator'      — Main estimation calculator
+  'dashboard'       — Operations & P&L dashboard
+  'customers'       — CRM list
+  'customer_detail' — CRM record detail
+  'warehouse'       — Inventory management
+  'settings'        — App configuration
+  'profile'         — Company profile
+  'work_order_stage'— Work order creation
+  'invoice_stage'   — Invoice creation
+  'estimate_stage'  — Estimate finalization
+  'estimate_detail' — Read-only estimate
+  'material_report' — Material usage report
+
+GLOBAL STATE (CalculatorContext.tsx)
+-------------------------------------
+Pattern: React.createContext + useReducer (no external state library)
+
+State shape:
+  {
+    appData: CalculatorState     — foam inputs, job data, customers, inventory
+    session: UserSession         — user, role, company, profile info
+    ui:      UIState             — current view, loading flags, notifications
+  }
+
+Key reducer actions:
+  SET_SESSION           — stores auth user + profile + company
+  LOAD_DATA             — bulk-loads estimates, customers, inventory from Supabase
+  UPDATE_DATA           — updates appData fields (debounced → auto-save)
+  SET_VIEW              — navigate to a different view
+  RESET_CALCULATOR      — clear form for new estimate
+  LOGOUT                — clear session + state
+  UPDATE_SAVED_ESTIMATE — patch a single estimate in the list
+
+--------------------------------------------------------------------------------
+5. AUTHENTICATION & AUTHORIZATION
+--------------------------------------------------------------------------------
+Provider    : Supabase Auth
+Mechanism   : Email + password (signInWithPassword / signUp)
+Reset flow  : resetPasswordForEmail → magic link
+Persistence : Session stored to localStorage key 'foamProSession'
+
+On login:
+  1. supabase.auth.signInWithPassword(email, password)
+  2. Query profiles table → get role, display_name, company_id, crew_password
+  3. Query companies table → get company name, logo_url, etc.
+  4. Dispatch SET_SESSION → context stores full session object
+
+Roles:
+  admin — full app access (all views + all CRUD + financial data)
+  crew  — restricted to CrewDashboard only (work orders, time clock, job completion)
+
+Crew user creation:
+  Admin triggers Supabase Edge Function 'create-crew-user' to provision crew
+  accounts (bypasses normal signup flow, uses service-role key server-side)
+
+Row-Level Security:
+  All Supabase tables scoped by company_id — multi-tenancy at DB level
+
+--------------------------------------------------------------------------------
+6. CORE FEATURE: CALCULATION ENGINE (utils/calculatorHelpers.ts)
+--------------------------------------------------------------------------------
+Four calculation modes:
+  BUILDING    — Full building: walls + pitched roof + optional gables
+  WALLS_ONLY  — Linear footage walls only
+  FLAT_AREA   — Flat slab/attic (L×W), optional pitch factor
+  CUSTOM      — Manual sqft override
+
+Calculation pipeline:
+  1.  Parse pitch string (accepts "X/12" notation, degrees, or bare number)
+  2.  Compute pitch factor: sqrt(1 + (rise/run)^2)
+  3.  Apply metal surface factor (+15% if corrugated metal substrate)
+  4.  Calculate wall area (linear_ft × height × 2 sides)
+  5.  Calculate gable area (triangular end walls from pitch geometry)
+  6.  Calculate roof area (footprint × pitch factor)
+  7.  Sum additional areas (walls or roofs added as extra line items)
+  8.  Split total area into open-cell (OC) and closed-cell (CC) zones
+  9.  Apply waste percentage to each zone
+  10. Compute board-feet: area × depth × waste_factor
+  11. Divide bdft by yield-per-set → number of sets needed
+  12. Multiply sets × strokes-per-set → estimated machine strokes
+  13. Material cost: (OC_sets × OC_price) + (CC_sets × CC_price) + inventory_cost
+  14. Labor cost: man_hours × hourly_rate + trip_fee + fuel_fee
+  15. Pricing modes:
+        Cost Plus — material_cost + labor_cost + misc_fees (+ optional margin)
+        SqFt      — total_area × $/sqft_rate
+
+Settings configurable per company:
+  OC yield (bdft/set), CC yield (bdft/set)
+  Strokes per OC set, strokes per CC set
+  OC cost per set, CC cost per set
+  Labor hourly rate, default waste %
+
+--------------------------------------------------------------------------------
+7. JOB LIFECYCLE — 5-PHASE PIPELINE
+--------------------------------------------------------------------------------
+Phase           status field value      Key Transition
+──────────────────────────────────────────────────────────────────────────────
+1. Draft        'draft'                 Created on new estimate save
+2. Work Order   'work_order'            Admin creates WO; deducts foam from warehouse
+3. Scheduled    'work_order' + date     Scheduling date set on work order
+4. Invoiced     'invoiced'              Admin generates invoice from completed job
+5. Paid         'paid'                  Mark paid → triggers P&L RPC, receipt PDF
+
+Additional execution flag:
+  execution_status: 'completed'   Set by crew on job completion
+  → Admin sees CrewReportBanner with actuals (sets used, strokes, labor hours)
+  → Admin can then proceed to invoicing
+
+Stage components:
+  EstimateStage.tsx   — editable line items, discount, PDF generation
+  WorkOrderStage.tsx  — scheduling, crew notes, foam deduction
+  InvoiceStage.tsx    — editable invoice lines, tax, total, mark paid
+
+--------------------------------------------------------------------------------
+8. PDF GENERATION (utils/pdfGenerator.ts)
+--------------------------------------------------------------------------------
+Library: jsPDF 2.5.1 + jspdf-autotable 3.8.2
+
+Four document types:
+
+  generateEstimatePDF(estimate, company)
+    — Customer-facing proposal
+    — Company logo (remote URL → Canvas conversion)
+    — Customer info header box
+    — Line items table (description, qty, unit price, total)
+    — Subtotal / discount / total section
+    — Branded red/dark header
+
+  generateDocumentPDF(estimate, company, type: 'INVOICE'|'RECEIPT')
+    — Invoice: unpaid amount, due date, payment terms
+    — Receipt: confirmation of payment received
+
+  generateWorkOrderPDF(estimate, company)
+    — Crew-facing document (NO pricing shown)
+    — Job site details, foam specs, stroke count targets
+    — Crew notes and special instructions
+
+  generatePurchaseOrderPDF(po, company)
+    — Vendor PO with line items
+    — Vendor address block
+    — PO number, date, terms
+
+All PDFs:
+  - A4 / Letter page size
+  - Company logo in header (auto-fetched + Canvas-converted for CORS)
+  - Consistent brand colors (RFE Red #E30613 + dark slate)
+  - Auto-downloaded as named .pdf file in browser
+
+--------------------------------------------------------------------------------
+9. DATA PERSISTENCE & SYNC (hooks/useSync.ts + services/api.ts)
+--------------------------------------------------------------------------------
+Primary store: Supabase PostgreSQL (cloud)
+Secondary:     localStorage (offline/backup)
+
+Init load sequence (on session set):
+  Parallel fetch:
+    → estimates         (filtered by company_id)
+    → customers         (filtered by company_id)
+    → inventory_items   (filtered by company_id)
+    → company_settings  (costs, yields, warehouse counts, lifetime stats)
+  Dispatch LOAD_DATA → merges into global state
+
+Auto-save:
+  3-second debounce on any appData change
+  Saves: company_settings (costs, yields, warehouse foam counts, lifetime usage)
+  Local backup: always writes to localStorage key 'foamProState_{username}'
+
+Force refresh:
+  forceRefresh() re-fetches all Supabase data and reloads state
+
+Crew polling:
+  Crew role skips auto-sync; polls Supabase every 45 seconds via setInterval
+  Crew can manually pull latest jobs with a refresh button
+
+Session recovery:
+  On app load, reads 'foamProSession' from localStorage
+  Validates against Supabase → restores session without re-login
+
+--------------------------------------------------------------------------------
+10. WAREHOUSE / INVENTORY MANAGEMENT (components/Warehouse.tsx)
+--------------------------------------------------------------------------------
+Two inventory categories:
+
+Foam Sets (tracked at company_settings level):
+  OC sets on hand      — decremented when work order created
+  CC sets on hand      — decremented when work order created
+  OC lifetime sets used
+  CC lifetime sets used
+
+Line Items (inventory_items table):
+  Item name, quantity, unit (each/roll/bag/etc.), unit cost, total value
+  Job-level inventory: items can be attached to individual estimates
+  Crew actuals: crew reports actual qty used per item on job completion
+  Warehouse is debited on crew job completion (via completeJob())
+
+Material Report (components/MaterialReport.tsx):
+  Per-job breakdown of foam sets and inventory items used
+  Sourced from material_logs table (written on each job completion)
+
+--------------------------------------------------------------------------------
+11. CREW DASHBOARD (components/CrewDashboard.tsx)
+--------------------------------------------------------------------------------
+Access: role === 'crew' only (redirected from main app shell)
+Design: Mobile-first interface
+
+Features:
+  Active jobs list   — Shows all 'work_order' status jobs for the company
+  Time clock         — Start / Pause / Stop with elapsed timer
+                       Persisted to localStorage ('timeClockState')
+  Job completion modal:
+    — Actual OC sets used
+    — Actual CC sets used
+    — Actual stroke count
+    — Actual labor hours
+    — Per-item inventory actuals
+    — Crew notes / issues
+  On submit:
+    — completeJob() API call
+    — Sets execution_status = 'completed' on estimate
+    — Deducts foam sets from company_settings warehouse count
+    — Writes material_logs records
+    — Deducts inventory_items quantities
+  Auto-sync: polls every 45 seconds (setInterval)
+  Job history toggle: shows completed jobs list
+
+--------------------------------------------------------------------------------
+12. REAL-TIME PRESENCE (hooks/useRealtime.ts)
+--------------------------------------------------------------------------------
+Library  : Supabase Realtime (Postgres Changes + Presence)
+Channel  : 'company_{company_id}'
+Tracks   : Which users are currently online (admin and crew)
+Use case : Admin can see if crew members are online; crew can see admin status
+State    : Stored in UIState as onlineUsers[]
+
+--------------------------------------------------------------------------------
+13. DASHBOARD & REPORTING (components/Dashboard.tsx)
+--------------------------------------------------------------------------------
+Operations panel:
+  Job pipeline counts by status (draft, work_order, invoiced, paid)
+  Recent jobs list with status badges
+  Quick-action buttons per job (view, invoice, mark paid)
+
+P&L metrics:
+  Total revenue (paid jobs)
+  Total material cost
+  Gross profit
+  Gross margin %
+  Revenue by month (rolling 12 months)
+  These figures sourced from estimates data + create_profit_loss_record RPC
+
+CRM (components/Customers.tsx):
+  Customer list with search
+  Customer detail: contact info, job history, total spend
+  Create / edit / delete customers
+  Link customers to estimates
+
+--------------------------------------------------------------------------------
+14. SETTINGS & CONFIGURATION (components/Settings.tsx)
+--------------------------------------------------------------------------------
+Per-company configurable values stored in company_settings:
+  Open-cell yield       (board-feet per set, default ~800)
+  Closed-cell yield     (board-feet per set, default ~450)
+  Strokes per OC set    (machine cycles per set)
+  Strokes per CC set
+  OC cost per set       ($ material cost)
+  CC cost per set
+  Labor hourly rate     ($)
+  Default waste %
+  Trip fee / Fuel fee defaults
+All changes auto-saved to Supabase within 3 seconds.
+
+Company Profile (components/Profile.tsx):
+  Company name, address, phone, email, website
+  Logo URL (used in all PDF headers)
+  Crew account credentials (crew username + password shown to admin)
+
+--------------------------------------------------------------------------------
+15. THEMING & DESIGN SYSTEM
+--------------------------------------------------------------------------------
+Framework  : Tailwind CSS v4 with custom @theme tokens
+Font stack : Inter (sans), JetBrains Mono (mono)
+
+Brand colors (index.css):
+  --color-brand:         #E30613   (RFE Red — primary CTAs, active states)
+  --color-brand-hover:   #b90510
+  --color-brand-yellow:  #FFDE00   (accent)
+
+Dark palette used:
+  Sidebar / headers:  #0F172A  (dark slate)
+  Cards:              white / slate-50
+  Text:               slate-700 / slate-900
+
+Responsive breakpoints:
+  Mobile:  bottom navigation bar (5 icons)
+  Desktop: left sidebar (160px wide) + top header
+
+PWA Window Controls Overlay:
+  titlebar-area-height CSS env var used in Layout.tsx for
+  custom draggable title bar on installed PWA
+
+--------------------------------------------------------------------------------
+16. SUPABASE DATABASE SCHEMA
+--------------------------------------------------------------------------------
+Tables:
+
+  companies
+    id, name, logo_url, address, phone, email, website, created_at
+
+  profiles
+    id (= auth.users.id), company_id, role ('admin'|'crew'),
+    display_name, crew_password, created_at
+
+  estimates
+    id, company_id, customer_id, status, execution_status,
+    calculator_state (JSONB — full form data snapshot),
+    line_items (JSONB), work_order_data (JSONB), invoice_data (JSONB),
+    scheduled_date, crew_notes, created_at, updated_at
+
+  customers
+    id, company_id, name, email, phone, address, notes, created_at
+
+  inventory_items
+    id, company_id, name, quantity, unit, unit_cost, created_at
+
+  company_settings
+    id, company_id, oc_yield, cc_yield, oc_strokes, cc_strokes,
+    oc_cost, cc_cost, labor_rate, default_waste,
+    oc_sets_on_hand, cc_sets_on_hand,
+    oc_lifetime_used, cc_lifetime_used, updated_at
+
+  material_logs
+    id, company_id, estimate_id, oc_sets_used, cc_sets_used,
+    stroke_count, labor_hours, notes, created_at
+
+  purchase_orders
+    id, company_id, vendor_name, line_items (JSONB),
+    total, status, created_at
+
+Storage bucket: job_attachments (PDFs + site photos per estimate)
+
+RPC functions:
+  create_profit_loss_record(p_estimate_id)
+    — Called on mark-paid; calculates and stores P&L data for the job
+
+Row-Level Security:
+  All tables enforce company_id filtering via RLS policies
+  Ensures multi-tenant data isolation at the database level
+
+--------------------------------------------------------------------------------
+17. SUPABASE EDGE FUNCTION
+--------------------------------------------------------------------------------
+Function : create-crew-user  (supabase/functions/create-crew-user/index.ts)
+Trigger  : HTTP POST from admin in Profile.tsx
+Purpose  : Creates a new Supabase Auth user with role='crew' using the
+           service-role key (which is not safe to use client-side)
+Process  :
+  1. Receives email + password + company_id from admin
+  2. Uses admin.createUser() with service-role key
+  3. Inserts a profiles record with role='crew'
+  4. Returns new user id to client
+
+--------------------------------------------------------------------------------
+18. PWA FEATURES
+--------------------------------------------------------------------------------
+Installation:
+  beforeinstallprompt captured → deferred prompt
+  Install button shown on login screen + main app header
+  Supports both Android (Chrome) and desktop (Edge/Chrome)
+
+Service Worker (sw.js):
+  Caches static assets for offline access
+  Serves cached version when network unavailable
+
+Manifest shortcuts:
+  '?action=new_estimate'  → opens calculator with new estimate
+  '?action=warehouse'     → opens warehouse view directly
+
+Window Controls Overlay:
+  display_override: ["window-controls-overlay"]
+  Allows custom title bar area on desktop PWA install
+  Layout.tsx reads titlebar-area-height env var to offset content
+
+--------------------------------------------------------------------------------
+19. KNOWN / NOTABLE PATTERNS
+--------------------------------------------------------------------------------
+- No URL-based router (React Router not used); all navigation is state-driven
+  via UIState.view. Deep-linking is not supported.
+
+- TypeScript strict mode is disabled (tsconfig: "strict": false). Type coverage
+  is partial; many components use 'any' implicitly.
+
+- Single context for all global state (no Zustand, Redux, or React Query).
+  Large state object may cause unnecessary re-renders on any update.
+
+- Two supabase.ts files exist (services/supabase.ts and src/services/supabase.ts).
+  The src/ version appears to be a legacy duplicate; primary is services/supabase.ts.
+
+- backend/Code.js is a Google Apps Script file — fully deprecated and not
+  connected to the current app. Can be safely removed.
+
+- Auto-save debounce saves all company_settings on any appData change, even if
+  only non-settings fields changed. Minor inefficiency.
+
+- Crew polling uses setInterval(45000) — no exponential backoff or visibility
+  API optimization. Will continue polling even when tab is in background.
+
+- PDF logo fetch uses Canvas (drawImage → toDataURL) to bypass CORS on remote
+  logo URLs. Fails silently if logo URL is unreachable.
+
+--------------------------------------------------------------------------------
+20. FILE COUNT SUMMARY
+--------------------------------------------------------------------------------
+  Root config files         :   8
+  Components (top-level)    :  17
+  Calculator sub-components :   8
+  Context                   :   1
+  Hooks                     :   3
+  Services                  :   2  (+ 1 legacy in src/)
+  Utils                     :   2
+  Supabase Edge Functions   :   1
+  Static / PWA files        :   4  (manifest, sw, index.html, vercel.json)
+  SQL schema                :   1
+  Deprecated                :   1  (backend/Code.js)
+  Docs                      :   1
+  ─────────────────────────────
+  TOTAL                     :  49 unique source files
+
+================================================================================
+END OF REPORT
+================================================================================
