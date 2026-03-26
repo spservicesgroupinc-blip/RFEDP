@@ -56,8 +56,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 2. Handle API calls (Google Script) - Network Only (Don't cache dynamic data)
-  if (event.request.url.includes('script.google.com')) {
+  // 2. Handle Supabase API calls - Network Only (Don't cache dynamic data)
+  if (event.request.url.includes('supabase.co')) {
       return; // Let browser handle normally
   }
 

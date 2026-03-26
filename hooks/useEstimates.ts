@@ -1,10 +1,10 @@
 import React from 'react';
 import { useCalculator, DEFAULT_STATE } from '../context/CalculatorContext';
 import { EstimateRecord, CalculationResults, CustomerProfile, PurchaseOrder, InvoiceLineItem } from '../types';
-import { 
-  deleteEstimate, 
-  markJobPaid, 
-  createWorkOrderSheet, 
+import {
+  deleteEstimate,
+  markJobPaid,
+  createWorkOrderSheet,
   savePdfToDrive,
   getEstimates,
   getCustomers,
@@ -13,6 +13,7 @@ import {
   updateEstimate,
   createCustomer,
   updateCustomer,
+  savePurchaseOrder,
 } from '../services/api';
 import { generateWorkOrderPDF, generateDocumentPDF } from '../utils/pdfGenerator';
 
@@ -354,7 +355,16 @@ export const useEstimates = () => {
       dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: 'Order Saved & Stock Updated' } });
       dispatch({ type: 'SET_VIEW', payload: 'warehouse' });
 
-      // TODO: Save purchase order to Supabase when table is added
+      // Save purchase order to Supabase
+      savePurchaseOrder({
+        po_number: po.id,
+        vendor_name: po.vendorName,
+        status: po.status,
+        items: po.items,
+        total_cost: po.totalCost,
+        notes: po.notes,
+        order_date: po.date,
+      }).catch(err => console.error('PO save failed:', err));
   };
 
   // ============================================================================

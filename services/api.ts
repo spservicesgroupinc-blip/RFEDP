@@ -59,8 +59,9 @@ export const markJobPaid = async (estimateId: string): Promise<{success: boolean
 
     if (updateError) throw updateError;
 
-    // TODO: Create P&L record via RPC function
-    // const { data: plData, error: plError } = await supabase.rpc('create_profit_loss_record', { p_estimate_id: estimateId });
+    // Create P&L record via RPC function
+    const { error: plError } = await supabase.rpc('create_profit_loss_record', { p_estimate_id: estimateId });
+    if (plError) console.error('P&L record creation error:', plError);
 
     return { success: true };
   } catch (error: any) {
@@ -126,20 +127,17 @@ export const completeJob = async (
   if (!isApiConfigured()) return false;
 
   try {
-    // Update estimate execution status
+    // Update estimate execution status (trigger fires automatically to log completion)
     const { error: updateError } = await supabase
       .from('estimates')
       .update({
         execution_status: 'completed',
-        actuals: actuals as any,
+        calculation_snapshot: { ...actuals },
         updated_at: new Date().toISOString(),
       })
       .eq('id', estimateId);
 
     if (updateError) throw updateError;
-
-    // TODO: Trigger inventory deduction via RPC
-    // const { error: rpcError } = await supabase.rpc('deduct_inventory_for_job', { p_estimate_id: estimateId });
 
     return true;
   } catch (error) {
@@ -477,6 +475,45 @@ export const getMaterialLogs = async (estimateId: string): Promise<any[]> => {
   }
 
   return data;
+};
+
+/**
+ * Save a purchase order to Supabase
+ */
+export const savePurchaseOrder = async (po: {
+  po_number: string;
+  vendor_name: string;
+  status: string;
+  items: any[];
+  total_cost: number;
+  notes?: string;
+  order_date: string;
+}): Promise<string | null> => {
+  if (!isApiConfigured()) return null;
+
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return null;
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('company_id')
+    .eq('id', session.user.id)
+    .single();
+
+  if (!profile) return null;
+
+  const { data, error } = await supabase
+    .from('purchase_orders')
+    .insert({ ...po, company_id: profile.company_id })
+    .select('id')
+    .single();
+
+  if (error) {
+    console.error('Save purchase order error:', error);
+    return null;
+  }
+
+  return data.id;
 };
 
 /**

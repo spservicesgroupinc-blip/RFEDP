@@ -11,7 +11,11 @@ export interface Profile {
   id: string
   company_id: string
   role: 'admin' | 'crew'
+  full_name: string
+  email: string
+  crew_pin: string | null
   created_at: string
+  updated_at: string
 }
 
 export interface Company {
