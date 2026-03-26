@@ -102,13 +102,10 @@ export const WorkOrderStage: React.FC<WorkOrderStageProps> = ({
       
       {/* Header */}
       <div className="flex items-center gap-4 mb-6">
-        <button onClick={onCancel} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
-          <ArrowLeft className="w-6 h-6 text-slate-500" />
+        <button onClick={onCancel} className="p-2 hover:bg-slate-200 rounded-xl transition-colors flex items-center gap-2">
+          <ArrowLeft className="w-5 h-5 text-slate-500" />
+          <span className="text-sm font-bold text-slate-600">Back to Calculator</span>
         </button>
-        <div>
-           <h1 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Finalize Work Order</h1>
-           <p className="text-slate-500 text-sm font-medium">Review details, customize scope text, and schedule crew.</p>
-        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -220,7 +217,7 @@ export const WorkOrderStage: React.FC<WorkOrderStageProps> = ({
                 </div>
             </div>
 
-            <button 
+            <button
                 onClick={handleConfirm}
                 disabled={isProcessing}
                 className="w-full bg-brand hover:bg-brand-hover text-white font-black py-4 rounded-xl shadow-lg shadow-red-200 transition-all active:scale-95 flex items-center justify-center gap-2 uppercase text-xs tracking-widest disabled:opacity-70 disabled:cursor-not-allowed"
@@ -235,14 +232,6 @@ export const WorkOrderStage: React.FC<WorkOrderStageProps> = ({
                         <HardHat className="w-5 h-5" /> Generate Work Order
                     </>
                 )}
-            </button>
-
-            <button 
-                onClick={onCancel}
-                disabled={isProcessing}
-                className="w-full bg-white hover:bg-slate-50 text-slate-500 font-bold py-3 rounded-xl border border-slate-200 transition-all active:scale-95 uppercase text-xs tracking-widest"
-            >
-                Continue Editing
             </button>
         </div>
 

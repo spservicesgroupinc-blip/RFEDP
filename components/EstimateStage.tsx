@@ -198,22 +198,22 @@ export const EstimateStage: React.FC<EstimateStageProps> = ({
               </div>
 
               {/* ACTION BUTTONS */}
-              <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-                  <button 
+              <div className="flex gap-1 w-full md:w-auto">
+                  <button
                       onClick={() => handleAction('save')}
                       disabled={isProcessing}
-                      className="px-6 py-4 bg-white border-2 border-slate-100 hover:border-slate-300 text-slate-600 rounded-xl font-bold uppercase text-xs tracking-widest flex items-center justify-center gap-2 transition-all w-full md:w-auto"
+                      className="px-6 py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-l-xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 transition-all flex-1 md:flex-none"
                   >
                       {actionType === 'save' ? <Loader2 className="w-4 h-4 animate-spin"/> : <Save className="w-4 h-4" />}
                       Save Estimate
                   </button>
-                  <button 
+                  <button
                       onClick={() => handleAction('print')}
                       disabled={isProcessing}
-                      className="px-8 py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 shadow-lg shadow-slate-200 transition-all w-full md:w-auto"
+                      className="px-6 py-4 bg-slate-700 hover:bg-slate-600 text-white rounded-r-xl font-black uppercase text-xs tracking-widest flex items-center justify-center gap-2 transition-all flex-1 md:flex-none border-l border-slate-600"
+                      title="Save and download PDF"
                   >
                       {actionType === 'print' ? <Loader2 className="w-5 h-5 animate-spin"/> : <Download className="w-5 h-5" />}
-                      Save & PDF
                   </button>
               </div>
           </div>

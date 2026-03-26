@@ -322,18 +322,21 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, onLogout, s
                         <span className="font-bold text-sm uppercase tracking-wide">GPS Map</span>
                     </a>
                     {selectedJob.workOrderSheetUrl ? (
-                         <a 
-                            href={selectedJob.workOrderSheetUrl} 
-                            target="_blank" 
-                            rel="noreferrer" 
+                         <a
+                            href={selectedJob.workOrderSheetUrl}
+                            target="_blank"
+                            rel="noreferrer"
                             className="bg-white active:bg-slate-50 text-slate-900 border border-slate-200 p-4 rounded-2xl shadow-sm flex flex-col items-center justify-center gap-2 transition-transform active:scale-95"
                         >
-                             <FileText className="w-6 h-6 text-emerald-600" /> 
+                             <FileText className="w-6 h-6 text-emerald-600" />
                              <span className="font-bold text-sm uppercase tracking-wide">View Sheet</span>
                          </a>
                     ) : (
-                         <div className="bg-slate-100 text-slate-400 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 border border-slate-200">
-                             <FileText className="w-6 h-6" /> 
+                         <div
+                            className="bg-slate-100 text-slate-400 p-4 rounded-2xl flex flex-col items-center justify-center gap-2 border border-slate-200 cursor-not-allowed"
+                            title="No work order sheet has been attached to this job yet. Contact your supervisor."
+                         >
+                             <FileText className="w-6 h-6" />
                              <span className="font-bold text-sm uppercase tracking-wide">No Sheet</span>
                          </div>
                     )}

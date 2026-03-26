@@ -15,10 +15,10 @@ interface DashboardProps {
   onSync: () => void;
 }
 
-export const Dashboard: React.FC<DashboardProps> = ({ 
-  state, 
-  onEditEstimate, 
-  onDeleteEstimate, 
+export const Dashboard: React.FC<DashboardProps> = ({
+  state,
+  onEditEstimate,
+  onDeleteEstimate,
   onNewEstimate,
   onMarkPaid,
   initialFilter = 'all',
@@ -28,6 +28,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'financials'>('overview');
   const [dashboardFilter, setDashboardFilter] = useState<'all' | 'review' | 'work_orders' | 'invoices'>('all');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // React to prop changes
   useEffect(() => {
@@ -347,12 +348,39 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                                             Mark Paid
                                                         </button>
                                                     )}
-                                                    <button 
-                                                        onClick={(e) => onDeleteEstimate(est.id, e)} 
-                                                        className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
-                                                    > 
-                                                        <Trash className="w-4 h-4" /> 
-                                                    </button>
+                                                    {confirmDeleteId === est.id ? (
+                                                        <div className="flex gap-1">
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    onDeleteEstimate(est.id, e);
+                                                                    setConfirmDeleteId(null);
+                                                                }}
+                                                                className="px-2 py-1 bg-red-500 hover:bg-red-600 text-white rounded text-[10px] font-black uppercase transition-colors"
+                                                            >
+                                                                Confirm
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setConfirmDeleteId(null);
+                                                                }}
+                                                                className="px-2 py-1 bg-slate-200 hover:bg-slate-300 text-slate-600 rounded text-[10px] font-black uppercase transition-colors"
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setConfirmDeleteId(est.id);
+                                                            }}
+                                                            className="p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded transition-colors"
+                                                        >
+                                                            <Trash className="w-4 h-4" />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             </td>
                                         </tr>
