@@ -57,6 +57,8 @@ export const useSync = () => {
           customers: customers,
           warehouse: {
             ...DEFAULT_STATE.warehouse,
+            openCellSets: settings?.warehouse_counts?.openCellSets ?? DEFAULT_STATE.warehouse.openCellSets,
+            closedCellSets: settings?.warehouse_counts?.closedCellSets ?? DEFAULT_STATE.warehouse.closedCellSets,
             items: inventory,
           },
           costs: settings?.costs_json || DEFAULT_STATE.costs,
@@ -172,6 +174,8 @@ export const useSync = () => {
           customers: customers,
           warehouse: {
             ...appData.warehouse,
+            openCellSets: settings?.warehouse_counts?.openCellSets ?? appData.warehouse.openCellSets,
+            closedCellSets: settings?.warehouse_counts?.closedCellSets ?? appData.warehouse.closedCellSets,
             items: inventory,
           },
           costs: settings?.costs_json || appData.costs,

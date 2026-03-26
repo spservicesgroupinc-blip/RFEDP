@@ -114,20 +114,33 @@ export const logCrewTime = async (
 };
 
 /**
- * Marks job as complete and logs material usage
+ * Marks job as complete, logs material usage, and deducts inventory on-hand counts
  */
 export const completeJob = async (
-  estimateId: string, 
+  estimateId: string,
   actuals: {
     openCellSets: number;
     closedCellSets: number;
-    inventory: Array<{ name: string; quantity: number; unit: string }>;
+    inventory: Array<{ id?: string; warehouseItemId?: string; name: string; quantity: number; unit: string }>;
   }
 ): Promise<boolean> => {
   if (!isApiConfigured()) return false;
 
   try {
-    // Update estimate execution status (trigger fires automatically to log completion)
+    // Get current user session and company_id once
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('No active session');
+
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('company_id')
+      .eq('id', session.user.id)
+      .single();
+
+    if (!profile) throw new Error('No profile found');
+    const companyId = profile.company_id;
+
+    // 1. Mark estimate as completed
     const { error: updateError } = await supabase
       .from('estimates')
       .update({
@@ -138,6 +151,116 @@ export const completeJob = async (
       .eq('id', estimateId);
 
     if (updateError) throw updateError;
+
+    // 2. Deduct general inventory items from warehouse on-hand counts
+    const inventoryDeductions = actuals.inventory.filter(
+      item => item.warehouseItemId && item.quantity > 0
+    );
+
+    for (const item of inventoryDeductions) {
+      // Fetch current quantity
+      const { data: warehouseItem, error: fetchError } = await supabase
+        .from('inventory_items')
+        .select('id, quantity')
+        .eq('id', item.warehouseItemId)
+        .eq('company_id', companyId)
+        .single();
+
+      if (fetchError || !warehouseItem) {
+        console.warn(`Could not find warehouse item ${item.warehouseItemId} for deduction`);
+        continue;
+      }
+
+      const newQuantity = (warehouseItem.quantity || 0) - item.quantity;
+
+      const { error: deductError } = await supabase
+        .from('inventory_items')
+        .update({ quantity: newQuantity, updated_at: new Date().toISOString() })
+        .eq('id', item.warehouseItemId)
+        .eq('company_id', companyId);
+
+      if (deductError) {
+        console.error(`Failed to deduct inventory for ${item.name}:`, deductError);
+      }
+    }
+
+    // 3. Deduct foam sets from company_settings.warehouse_counts
+    if (actuals.openCellSets > 0 || actuals.closedCellSets > 0) {
+      const { data: settings, error: settingsError } = await supabase
+        .from('company_settings')
+        .select('id, warehouse_counts')
+        .eq('company_id', companyId)
+        .single();
+
+      if (!settingsError && settings) {
+        const counts = settings.warehouse_counts || {};
+        const updatedCounts = {
+          ...counts,
+          openCellSets: Math.max(0, (counts.openCellSets || 0) - actuals.openCellSets),
+          closedCellSets: Math.max(0, (counts.closedCellSets || 0) - actuals.closedCellSets),
+        };
+
+        await supabase
+          .from('company_settings')
+          .update({ warehouse_counts: updatedCounts, updated_at: new Date().toISOString() })
+          .eq('id', settings.id);
+      }
+    }
+
+    // 4. Log all material usage to material_logs
+    const logEntries = [];
+
+    if (actuals.openCellSets > 0) {
+      logEntries.push({
+        company_id: companyId,
+        estimate_id: estimateId,
+        material_name: 'Open Cell Foam',
+        material_category: 'open_cell',
+        quantity: actuals.openCellSets,
+        unit: 'sets',
+        logged_by_id: session.user.id,
+        log_date: new Date().toISOString().split('T')[0],
+        log_type: 'usage',
+        notes: 'Logged on job completion',
+      });
+    }
+
+    if (actuals.closedCellSets > 0) {
+      logEntries.push({
+        company_id: companyId,
+        estimate_id: estimateId,
+        material_name: 'Closed Cell Foam',
+        material_category: 'closed_cell',
+        quantity: actuals.closedCellSets,
+        unit: 'sets',
+        logged_by_id: session.user.id,
+        log_date: new Date().toISOString().split('T')[0],
+        log_type: 'usage',
+        notes: 'Logged on job completion',
+      });
+    }
+
+    for (const item of actuals.inventory) {
+      if (item.quantity > 0) {
+        logEntries.push({
+          company_id: companyId,
+          estimate_id: estimateId,
+          material_name: item.name,
+          material_category: 'supplementary',
+          quantity: item.quantity,
+          unit: item.unit,
+          logged_by_id: session.user.id,
+          log_date: new Date().toISOString().split('T')[0],
+          log_type: 'usage',
+          notes: 'Logged on job completion',
+        });
+      }
+    }
+
+    if (logEntries.length > 0) {
+      const { error: logError } = await supabase.from('material_logs').insert(logEntries);
+      if (logError) console.error('Material log insert error:', logError);
+    }
 
     return true;
   } catch (error) {
@@ -360,7 +483,10 @@ export const updateCompanySettings = async (settings: any): Promise<boolean> => 
       .update({
         costs_json: settings.costs || {},
         yields_json: settings.yields || {},
-        warehouse_counts: settings.warehouse || {},
+        warehouse_counts: {
+          openCellSets: settings.warehouse?.openCellSets ?? 0,
+          closedCellSets: settings.warehouse?.closedCellSets ?? 0,
+        },
         lifetime_usage: settings.lifetimeUsage || {},
         pricing_defaults: settings.pricingDefaults || {},
         updated_at: new Date().toISOString(),
@@ -374,7 +500,10 @@ export const updateCompanySettings = async (settings: any): Promise<boolean> => 
       .insert({
         costs_json: settings.costs || {},
         yields_json: settings.yields || {},
-        warehouse_counts: settings.warehouse || {},
+        warehouse_counts: {
+          openCellSets: settings.warehouse?.openCellSets ?? 0,
+          closedCellSets: settings.warehouse?.closedCellSets ?? 0,
+        },
         lifetime_usage: settings.lifetimeUsage || {},
         pricing_defaults: settings.pricingDefaults || {},
       });

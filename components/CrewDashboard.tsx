@@ -490,6 +490,38 @@ export const CrewDashboard: React.FC<CrewDashboardProps> = ({ state, onLogout, s
                                 </div>
                             </div>
 
+                            {/* GENERAL INVENTORY ACTUALS */}
+                            {actuals.inventory && actuals.inventory.length > 0 && (
+                                <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100 space-y-4">
+                                    <h4 className="text-xs font-black text-emerald-900 uppercase tracking-widest border-b border-emerald-200 pb-2 flex items-center gap-2">
+                                        <Package className="w-3 h-3" /> Supplies Used (Edit to Actual)
+                                    </h4>
+                                    {actuals.inventory.map((item, idx) => (
+                                        <div key={item.id || idx} className="flex items-center gap-3">
+                                            <div className="flex-1">
+                                                <label className="text-xs font-bold text-emerald-700 block mb-1">{item.name}</label>
+                                                <div className="text-[10px] text-emerald-500 font-bold uppercase tracking-wider">Est: {selectedJob.materials?.inventory?.find(i => i.id === item.id)?.quantity ?? item.quantity} {item.unit}</div>
+                                            </div>
+                                            <div className="w-28">
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="1"
+                                                    value={item.quantity}
+                                                    onChange={(e) => {
+                                                        const updated = [...actuals.inventory];
+                                                        updated[idx] = { ...updated[idx], quantity: parseFloat(e.target.value) || 0 };
+                                                        setActuals({ ...actuals, inventory: updated });
+                                                    }}
+                                                    className="w-full p-3 bg-white border border-emerald-200 rounded-xl font-bold text-lg text-slate-900 text-center focus:ring-2 focus:ring-emerald-500 outline-none"
+                                                />
+                                                <div className="text-[10px] text-center text-emerald-500 font-bold mt-1">{item.unit}</div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
                             {/* CREW NOTES */}
                             <div>
                                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 ml-1 flex items-center gap-1">
