@@ -11,6 +11,7 @@ import {
   getInventoryItems,
   upsertEstimate,
   upsertCustomer,
+  updateEstimate,
   savePurchaseOrder,
 } from '../services/api';
 import { generateWorkOrderPDF, generateDocumentPDF } from '../utils/pdfGenerator';
@@ -68,11 +69,11 @@ export const useEstimates = () => {
         return null;
     }
 
-    const estimateId = ui.editingEstimateId || Math.random().toString(36).substr(2, 9);
+    const estimateId = ui.editingEstimateId || crypto.randomUUID();
     const existingRecord = appData.savedEstimates.find(e => e.id === estimateId);
 
     // Ensure customer ID is consistent
-    const customerId = appData.customerProfile.id || Math.random().toString(36).substr(2, 9);
+    const customerId = appData.customerProfile.id || crypto.randomUUID();
 
     let newStatus: EstimateRecord['status'] = targetStatus || (existingRecord?.status || 'Draft');
 
@@ -164,12 +165,6 @@ export const useEstimates = () => {
     dispatch({ type: 'UPDATE_DATA', payload: updatePayload });
     dispatch({ type: 'SET_EDITING_ESTIMATE', payload: estimateId });
 
-    // Check for implicit customer creation
-    if (!appData.customers.find(c => c.id === customerId)) {
-        const newCustomer = { ...appData.customerProfile, id: customerId };
-        saveCustomer(newCustomer);
-    }
-
     // Redirect control
     if (shouldRedirect) {
         dispatch({ type: 'SET_VIEW', payload: 'estimate_detail' });
@@ -182,9 +177,19 @@ export const useEstimates = () => {
     dispatch({ type: 'SET_NOTIFICATION', payload: { type: 'success', message: actionLabel } });
 
     // Background Supabase upsert (non-blocking)
+    // Customer must be upserted FIRST to satisfy the FK constraint on estimates.customer_id
     dispatch({ type: 'SET_SYNC_STATUS', payload: 'pending' });
     (async () => {
       dispatch({ type: 'SET_SYNC_STATUS', payload: 'syncing' });
+
+      // Ensure customer exists in DB before saving estimate (FK constraint)
+      const customerToSave = { ...appData.customerProfile, id: customerId };
+      if (!appData.customers.find(c => c.id === customerId)) {
+        // New customer — add to local state then upsert
+        dispatch({ type: 'UPDATE_DATA', payload: { customers: [...appData.customers, customerToSave] } });
+      }
+      await upsertCustomer(customerToSave);
+
       const ok = await upsertEstimate(newEstimate);
       dispatch({ type: 'SET_SYNC_STATUS', payload: ok ? 'success' : 'error' });
       if (ok) setTimeout(() => dispatch({ type: 'SET_SYNC_STATUS', payload: 'idle' }), 3000);

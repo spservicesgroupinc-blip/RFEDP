@@ -378,6 +378,50 @@ export const uploadImage = async (
 // DIRECT SUPABASE QUERY FUNCTIONS (Recommended approach)
 // ============================================================================
 
+// ============================================================================
+// ENUM MAPPING HELPERS
+// ============================================================================
+
+const appStatusToDb: Record<string, string> = {
+  'Draft': 'draft',
+  'Work Order': 'work_order',
+  'Invoiced': 'invoiced',
+  'Paid': 'paid',
+  'Archived': 'archived',
+};
+
+const dbStatusToApp: Record<string, EstimateRecord['status']> = {
+  'draft': 'Draft',
+  'work_order': 'Work Order',
+  'invoiced': 'Invoiced',
+  'paid': 'Paid',
+  'archived': 'Archived',
+};
+
+const appExecStatusToDb: Record<string, string> = {
+  'Not Started': 'not_started',
+  'In Progress': 'in_progress',
+  'Completed': 'completed',
+};
+
+const dbExecStatusToApp: Record<string, EstimateRecord['executionStatus']> = {
+  'not_started': 'Not Started',
+  'in_progress': 'In Progress',
+  'completed': 'Completed',
+};
+
+const appCustomerStatusToDb: Record<string, string> = {
+  'Active': 'active',
+  'Archived': 'archived',
+  'Lead': 'lead',
+};
+
+const dbCustomerStatusToApp: Record<string, CustomerProfile['status']> = {
+  'active': 'Active',
+  'archived': 'Archived',
+  'lead': 'Lead',
+};
+
 /**
  * Get all estimates for current user's company
  */
@@ -386,7 +430,7 @@ export const getEstimates = async (): Promise<EstimateRecord[]> => {
 
   const { data, error } = await supabase
     .from('estimates')
-    .select('*, customers(*)')
+    .select('*')
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -394,7 +438,23 @@ export const getEstimates = async (): Promise<EstimateRecord[]> => {
     return [];
   }
 
-  return data as EstimateRecord[];
+  // Reconstruct EstimateRecord from DB row + calculation_snapshot
+  return (data || []).map((row: any) => {
+    const snapshot: Partial<EstimateRecord> = row.calculation_snapshot || {};
+    return {
+      ...snapshot,
+      // Authoritative DB fields override snapshot
+      id: row.id,
+      customerId: snapshot.customerId || row.customer_id,
+      date: row.date || snapshot.date,
+      status: dbStatusToApp[row.status] || snapshot.status || 'Draft',
+      executionStatus: dbExecStatusToApp[row.execution_status] || snapshot.executionStatus || 'Not Started',
+      totalValue: Number(row.total_value) || snapshot.totalValue || 0,
+      invoiceNumber: row.invoice_number || snapshot.invoiceNumber,
+      invoiceDate: row.invoice_date || snapshot.invoiceDate,
+      notes: row.internal_notes || snapshot.notes,
+    } as EstimateRecord;
+  });
 };
 
 /**
@@ -429,7 +489,18 @@ export const getCustomers = async (): Promise<CustomerProfile[]> => {
     return [];
   }
 
-  return data as CustomerProfile[];
+  return (data || []).map((row: any) => ({
+    id: row.id,
+    name: row.name || '',
+    address: row.address_line1 || '',
+    city: row.city || '',
+    state: row.state || '',
+    zip: row.zip || '',
+    phone: row.phone || '',
+    email: row.email || '',
+    notes: row.notes || '',
+    status: dbCustomerStatusToApp[row.status] || 'Lead',
+  }));
 };
 
 /**
@@ -730,6 +801,8 @@ export const upsertCompanySettings = async (settings: {
 
 /**
  * Upsert estimate (insert or update by id)
+ * Maps EstimateRecord (camelCase) to DB schema (snake_case).
+ * Stores full record in calculation_snapshot for round-trip fidelity.
  */
 export const upsertEstimate = async (estimate: Partial<EstimateRecord>): Promise<boolean> => {
   if (!isApiConfigured()) return false;
@@ -745,19 +818,35 @@ export const upsertEstimate = async (estimate: Partial<EstimateRecord>): Promise
 
   if (!profile) return false;
 
+  const dbRow: Record<string, any> = {
+    id: estimate.id,
+    company_id: profile.company_id,
+    customer_id: estimate.customerId || null,
+    date: estimate.date ? estimate.date.split('T')[0] : new Date().toISOString().split('T')[0],
+    status: appStatusToDb[estimate.status || 'Draft'] || 'draft',
+    execution_status: appExecStatusToDb[estimate.executionStatus || 'Not Started'] || 'not_started',
+    total_value: estimate.totalValue || 0,
+    material_cost: estimate.results?.materialCost || 0,
+    labor_cost: estimate.results?.laborCost || 0,
+    retail_price: estimate.results?.totalCost || 0,
+    invoice_number: estimate.invoiceNumber || null,
+    invoice_date: estimate.invoiceDate ? estimate.invoiceDate.split('T')[0] : null,
+    internal_notes: estimate.notes || null,
+    calculation_snapshot: estimate,
+    updated_at: new Date().toISOString(),
+  };
+
   const { error } = await supabase
     .from('estimates')
-    .upsert({
-      ...estimate,
-      company_id: profile.company_id,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'id' });
+    .upsert(dbRow, { onConflict: 'id' });
 
+  if (error) console.error('upsertEstimate error:', error);
   return !error;
 };
 
 /**
  * Upsert customer (insert or update by id)
+ * Maps CustomerProfile (camelCase) to DB schema (snake_case).
  */
 export const upsertCustomer = async (customer: CustomerProfile): Promise<boolean> => {
   if (!isApiConfigured()) return false;
@@ -773,13 +862,25 @@ export const upsertCustomer = async (customer: CustomerProfile): Promise<boolean
 
   if (!profile) return false;
 
+  const dbRow: Record<string, any> = {
+    id: customer.id,
+    company_id: profile.company_id,
+    name: customer.name,
+    address_line1: customer.address || null,
+    city: customer.city || null,
+    state: customer.state || null,
+    zip: customer.zip || null,
+    phone: customer.phone || null,
+    email: customer.email || null,
+    notes: customer.notes || null,
+    status: appCustomerStatusToDb[customer.status || 'Lead'] || 'lead',
+    updated_at: new Date().toISOString(),
+  };
+
   const { error } = await supabase
     .from('customers')
-    .upsert({
-      ...customer,
-      company_id: profile.company_id,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: 'id' });
+    .upsert(dbRow, { onConflict: 'id' });
 
+  if (error) console.error('upsertCustomer error:', error);
   return !error;
 };
