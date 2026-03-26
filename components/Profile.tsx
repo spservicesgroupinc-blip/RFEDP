@@ -4,6 +4,7 @@ import { Upload, Save, Loader2, Users, KeyRound, ShieldCheck, Copy, User } from 
 import { CalculatorState, UserSession } from '../types';
 import { uploadImage } from '../services/api';
 import { supabase } from '../services/supabase';
+import { SyncStatusBadge } from './SyncStatusBadge';
 
 interface ProfileProps {
   state: CalculatorState;
@@ -96,6 +97,7 @@ export const Profile: React.FC<ProfileProps> = ({ state, onUpdateProfile, onManu
                 <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Organization Profile</h2>
                 <p className="text-slate-500 font-medium text-sm">Manage company branding and crew access credentials.</p>
              </div>
+             <SyncStatusBadge status={syncStatus} size="md" />
          </div>
 
          {/* MAIN PROFILE CARD */}

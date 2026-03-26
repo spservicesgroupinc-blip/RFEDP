@@ -1,14 +1,14 @@
 
 import React, { useEffect, useState } from 'react';
-import { 
-  LayoutDashboard, 
-  Plus, 
-  Warehouse, 
-  Users, 
-  User, 
-  LogOut, 
-  RefreshCw, 
-  CheckCircle2, 
+import {
+  LayoutDashboard,
+  Plus,
+  Warehouse,
+  Users,
+  User,
+  LogOut,
+  RefreshCw,
+  CheckCircle2,
   AlertCircle,
   X,
   Calculator,
@@ -16,9 +16,11 @@ import {
   Receipt,
   Copy,
   Download,
-  Menu
+  Menu,
+  Clock
 } from 'lucide-react';
 import { UserSession } from '../types';
+import { SyncStatusBadge } from './SyncStatusBadge';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -209,9 +211,9 @@ export const Layout: React.FC<LayoutProps> = ({
 
         <div className="p-4 border-t border-slate-100 bg-slate-50">
            <div className="flex items-center justify-between">
-              <div className="flex flex-col">
+              <div className="flex flex-col gap-1">
                 <span className="text-xs font-bold text-slate-900 truncate max-w-[120px]" title={userSession.companyName}>{userSession.companyName}</span>
-                <button 
+                <button
                     onClick={copyUsername}
                     className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium bg-white border border-slate-200 px-2 py-1 rounded-md my-1 w-fit hover:border-red-200 hover:text-brand transition-colors group"
                     title="Click to copy Company ID"
@@ -220,12 +222,7 @@ export const Layout: React.FC<LayoutProps> = ({
                     <span className="font-bold font-mono">{userSession.username}</span>
                     {copiedId ? <CheckCircle2 className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity" />}
                 </button>
-                <span className="text-[10px] text-slate-400">
-                  {syncStatus === 'syncing' && 'Syncing...'}
-                  {syncStatus === 'success' && 'Synced'}
-                  {syncStatus === 'error' && 'Offline'}
-                  {syncStatus === 'idle' && 'Active'}
-                </span>
+                <SyncStatusBadge status={syncStatus} size="sm" />
               </div>
               <button onClick={onLogout} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
                 <LogOut className="w-4 h-4" />
@@ -250,9 +247,7 @@ export const Layout: React.FC<LayoutProps> = ({
                   <Download className="w-5 h-5" />
                 </button>
               )}
-              {syncStatus === 'syncing' && <RefreshCw className="w-4 h-4 text-brand animate-spin"/>}
-              {syncStatus === 'success' && <CheckCircle2 className="w-4 h-4 text-emerald-500"/>}
-              {syncStatus === 'error' && <AlertCircle className="w-4 h-4 text-red-500"/>}
+              <SyncStatusBadge status={syncStatus} size="sm" showLabel={false} />
               {/* RESTORED LOGOUT BUTTON */}
               <button onClick={onLogout} className="p-2 text-slate-400 hover:text-red-500 bg-slate-50 rounded-full transition-colors ml-2">
                 <LogOut className="w-4 h-4" />
